@@ -6,7 +6,7 @@ import docx
 # pip install streamlit-chat  
 from streamlit_chat import message
 
-openai.api_key = st.secret.secrets['openai-secret']
+openai.api_key = st.secrets['openai-secret']
 
 #add title to 
 st.title("chatBot : OpenAI")
