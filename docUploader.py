@@ -1,7 +1,11 @@
 #import libs
 import openai 
 import streamlit as st
+import io
 import docx
+import pandas as pd
+from transformers import GPT2TokenizerFast\
+
 
 # pip install streamlit-chat  
 from streamlit_chat import message
@@ -11,7 +15,7 @@ openai.api_key = st.secrets['openai-secret']
 #add title to 
 st.title("chatBot : OpenAI")
 
-#Temp selctor
+#Sidebar
 with st.sidebar:
     # Create a slider to control the temperature of the model
     temperature = st.slider("Increase the temperature for wider variations", 
@@ -21,8 +25,21 @@ with st.sidebar:
         step=0.1)
     max_tokens = st.number_input('Insert max tokens (1 token = 3/4 words)',
         min_value=0, 
-        max_value=4096,
+        max_value=3000,
         value=2000)
+
+#Initialising session
+if 'generated' not in st.session_state:
+    st.session_state['generated'] = []
+
+if 'past' not in st.session_state:
+    st.session_state['past'] = []
+
+if 'history' not in st.session_state:
+    st.session_state['history'] = []
+
+if 'text' not in st.session_state:
+    st.session_state.text = ""
 
 def generate_response(prompt):
         completions = openai.Completion.create(
@@ -36,43 +53,36 @@ def generate_response(prompt):
     )
         return completions.choices[0].text
 
-uploaded_file = st.file_uploader("Choose a doc file")
+#Form for user input
+def update():
+    st.session_state.text += st.session_state.text_value
 
-if uploaded_file is not None:
-    doc = docx.Document(uploaded_file)
-    paras = '\n'.join([p.text for p in doc.paragraphs if p.text]   )
-    paras.splitlines()
-    st.write(paras)
+with st.form(key='my_form',clear_on_submit=True):
+    uploaded_file = st.file_uploader("Choose a doc file")
+    if uploaded_file is not None:
+        doc = docx.Document(uploaded_file)
+        paras = '\n'.join([p.text for p in doc.paragraphs if p.text]   )
+        paras.splitlines()
+        st.write(paras)
+    st.text_input('Enter your prompt and click on submit', value="", key='text_value')
+    submit = st.form_submit_button(label='Submit', on_click=update)
 
-# Storing the chat
-if 'generated' not in st.session_state:
-    st.session_state['generated'] = []
-
-if 'past' not in st.session_state:
-    st.session_state['past'] = []
-
-if 'history' not in st.session_state:
-    st.session_state['history'] = []
-    
-# We will get the user's input by calling the get_text function
-def get_text():
-    input_text = st.text_input('You', placeholder='Type Prompt that goes with file here', key="001")
-    return input_text
-
-if st.session_state['generated'] == [] and uploaded_file is not None:
+#Get user response
+if uploaded_file is not None and st.session_state.text != "":
     #Get user response
-    user_input = get_text() + paras
-else:
-    #Get user response
-    user_input = get_text()
+    st.session_state.text = st.session_state.text + paras
+    uploaded_file = None
+
+user_input = st.session_state.text
+
+st.session_state.text = ""
 
 if user_input:
-    
+        
     #Store the input
     st.session_state.history.append(user_input)
 
     #Get the conversation history
-    #conversation_history = '\n'.join(list(itertools.chain.from_iterable(zip(st.session_state['past'],st.session_state['generated'] ))))
     conversation_history = '\n'.join(st.session_state['history'])
     output = generate_response(conversation_history)
 
@@ -80,6 +90,32 @@ if user_input:
     st.session_state.past.append(user_input)
     st.session_state.generated.append(output)
     st.session_state.history.append(output)
+
+# Create an instance of a word document
+def list_to_word_doc(items, doc_name):
+    doc = docx.Document()
+    for item in items:
+        doc.add_paragraph(item)
+    return doc
+
+#Chat history downloader
+doc_download = list_to_word_doc(st.session_state['history'], 'chat_history')
+
+bio = io.BytesIO()
+doc_download.save(bio)
+if doc_download:
+    st.download_button(
+        label="Download Chat History",
+        data=bio.getvalue(),
+        file_name="chat_history.docx",
+        mime="docx"
+    )
+
+#display no of tokens
+tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+number_of_tokens = len(tokenizer(''.join(st.session_state['history']))['input_ids'])
+
+st.text('Number of tokens left: '+ str(max_tokens - number_of_tokens))
 
 if st.session_state['generated']:
     
